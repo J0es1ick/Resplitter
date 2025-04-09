@@ -10,16 +10,20 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/node": "^22.13.13",
+    "@types/node": "^22.14.0",
     "@types/node-telegram-bot-api": "^0.64.8",
     "@types/tesseract.js": "^2.0.0"
   },
   "dependencies": {
+    "-": "^0.0.1",
+    "@types/axios": "^0.14.4",
+    "axios": "^1.8.4",
     "dotenv": "^16.4.7",
     "node-telegram-bot-api": "^0.66.0",
     "nodemon": "^3.1.9",
     "pg": "^8.14.1",
     "prettier": "^3.5.3",
+    "reflect-metadata": "^0.2.2",
     "tesseract.js": "^6.0.0",
     "ts-node": "^10.9.2",
     "tslint": "^6.1.3",
