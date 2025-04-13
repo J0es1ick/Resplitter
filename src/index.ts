@@ -10,12 +10,9 @@ import { connection } from './utils/db';
 import { parseReceiptText } from './utils/receipt-parser';
 import { getUser } from './utils/get-user';
 import { sendToReceiptProcessor } from './utils/handle';
+import { API_FOLDER_KEY, API_KEY, API_UPLOAD_ENDPOINT, TELEGRAM_TOKEN } from './config';
 
-const bot = new TelegramBot(process.env.TELEGRAM_TOKEN!, { polling: true });
-
-const RECEIPT_PROCESSOR_API = process.env.RECEIPT_PROCESSOR_API!;
-const API_UPLOAD_ENDPOINT = `${RECEIPT_PROCESSOR_API}/upload`;
-const API_RESULT_ENDPOINT = `${RECEIPT_PROCESSOR_API}/result`;
+const bot = new TelegramBot(TELEGRAM_TOKEN!, { polling: true });
 
 const commands = [
   { command: '/start', description: 'начальное приветствие' },
@@ -28,7 +25,7 @@ const commands = [
 const start = async () => {
   bot.setMyCommands(commands);
 
-  connection.initialize().catch((error) => console.log(error));
+  connection.initialize().catch((error: any) => console.log(error));
   const worker = await createWorker('rus');
 
   bot.on('message', async (msg) => {
@@ -45,7 +42,7 @@ const start = async () => {
         const fileId = msg.photo[msg.photo.length - 1].file_id;
         const fileInfo = await bot.getFile(fileId);
         const filePath = fileInfo.file_path;
-        const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN!}/${filePath}`;
+        const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN!}/${filePath}`;
 
         const downloadPath = path.join('downloads', `${options.chatId}_${options.message_id}.jpg`);
         const downloadDir = path.dirname(downloadPath);
@@ -71,9 +68,10 @@ const start = async () => {
                 try {
                   processorText = await sendToReceiptProcessor(
                     downloadPath,
-                    msg.message_id.toString(),
-                    API_UPLOAD_ENDPOINT,
-                    API_RESULT_ENDPOINT
+                    API_UPLOAD_ENDPOINT!,
+                    API_UPLOAD_ENDPOINT!,
+                    API_KEY!,
+                    API_FOLDER_KEY!,
                   );
                 } catch (processorError) {
                   console.error('Ошибка процессора чеков:', processorError);
