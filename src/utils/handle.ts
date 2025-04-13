@@ -1,23 +1,31 @@
 import axios from 'axios';
 import fs from 'fs';
 
+function jsonParser(data: JSON){
+
+}
 export async function sendToReceiptProcessor(
   imagePath: string,
-  messageId: string,
   API_UPLOAD_ENDPOINT: string,
-  API_RESULT_ENDPOINT: string
+  API_RESULT_ENDPOINT: string,
+  API_KEY: string,
+  API_FOLDER_KEY:string
 ): Promise<string> {
   try {
     const image = fs.readFileSync(imagePath);
+    const encoded = Buffer.from(image).toString('base64');
 
-    const formData = new FormData();
-    const blob = new Blob([image], { type: 'image/jpeg' });
-    formData.append('image', blob, `receipt_${messageId}.jpg`);
-
-    const response = await axios.post(API_UPLOAD_ENDPOINT, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+    const response = await axios.post(API_UPLOAD_ENDPOINT, 
+      {
+        mimeType: "jpeg",
+        languageCodes: ["ru", "en"],
+        content: encoded
+      },
+       {
+      headers: {"Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`,
+          "x-folder-id": `${API_FOLDER_KEY}`,
+          "x-data-logging-enabled": "true"}
     });
 
     const processingId = response.data.id;
