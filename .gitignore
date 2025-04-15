@@ -4,9 +4,6 @@
 # Dependency directory
 node_modules
 
-# Database connection
-db.ts
-
 # Photo pass-through folder
 downloads
 

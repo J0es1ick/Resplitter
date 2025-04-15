@@ -1,4 +1,4 @@
-import { ReceiptItem } from './ReceiptItem';
+import { ReceiptItem } from './receipt-item';
 
 export interface ParsedReceipt {
   receiptNumber: string;

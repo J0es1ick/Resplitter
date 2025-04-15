@@ -1,6 +1,6 @@
-import { ParsedReceipt } from '../interfaces/ParsedReceipt';
+import { ParsedReceipt } from '../interfaces';
 
-export function parseReceiptText(text: string): ParsedReceipt {
+export const parseReceiptText = (text: string) => {
   const normalizedText = text
     .replace(/\r\n/g, '\n')
     .replace(/[^\S\n]+/g, ' ')
@@ -78,7 +78,7 @@ export function parseReceiptText(text: string): ParsedReceipt {
   }
 
   return result;
-}
+};
 
 function isValidDate(dateStr: string): boolean {
   return /^\d{2}\.\d{2}\.\d{4}$/.test(dateStr);

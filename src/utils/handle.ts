@@ -1,12 +1,12 @@
 import axios from 'axios';
 import fs from 'fs';
 
-export async function sendToReceiptProcessor(
+export const sendToReceiptProcessor = async (
   imagePath: string,
   messageId: string,
   API_UPLOAD_ENDPOINT: string,
   API_RESULT_ENDPOINT: string
-): Promise<string> {
+) => {
   try {
     const image = fs.readFileSync(imagePath);
 
@@ -46,4 +46,4 @@ export async function sendToReceiptProcessor(
     console.error('Ошибка при обработке чека:', error);
     throw error;
   }
-}
+};
