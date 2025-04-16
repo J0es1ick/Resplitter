@@ -14,8 +14,10 @@ import {
   selectDishes,
   splitEvently
 } from './data-handlers';
+import { changeTotal } from './data-handlers/change-total';
 
 const CallbackAction = {
+  CHANGE_TOTAL: 'change_total',
   PARSE_CORRECT: 'parse_correct',
   PARSE_INCORRECT: 'parse_incorrect',
   EDIT_RECEIPT: 'edit_receipt',
@@ -55,8 +57,10 @@ export function setupCallbackHandler() {
 
       if (callbackData.startsWith(CallbackAction.PREV_PAGE) || callbackData.startsWith(CallbackAction.NEXT_PAGE)) {
         await pagination(callbackData, options.chatId, options.messageId);
+      } else if (callbackData === CallbackAction.CHANGE_TOTAL) {
+        await changeTotal(state, options.chatId);
       } else if (callbackData === CallbackAction.PARSE_CORRECT) {
-        await parseCorrect(options.chatId, options.messageId);
+        await parseCorrect(options.chatId);
       } else if (callbackData === CallbackAction.PARSE_INCORRECT) {
         await parseIncorrect(options.chatId, options.messageId, state.receipt);
       } else if (callbackData === CallbackAction.EDIT_RECEIPT) {

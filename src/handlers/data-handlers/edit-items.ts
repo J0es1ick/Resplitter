@@ -12,7 +12,9 @@ export const editItems = async (state: ChatState, chatId: number, data: string) 
     return;
   }
   state.editingItemIndex = index;
+  state.waitingFor = 'editItem';
   const item = state.receipt.items[index];
+
   await bot.sendMessage(
     chatId,
     `Редактирование блюда ${index + 1}:\n` +
