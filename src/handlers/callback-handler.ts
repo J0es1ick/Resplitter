@@ -14,7 +14,8 @@ import {
   removeDish,
   removeItemById,
   selectDishes,
-  splitEvently
+  splitEvently,
+  backTo
 } from './data-handlers';
 
 export function setupCallbackHandler() {
@@ -104,6 +105,10 @@ export function setupCallbackHandler() {
 
         case CallbackAction.BACK:
           await back(options.chatId, options.messageId, state.receipt);
+          break;
+
+        case CallbackAction.BACK_TO:
+          await backTo(options.chatId, options.messageId, state.receipt);
           break;
 
         default:

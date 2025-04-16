@@ -1,4 +1,3 @@
-import { bot } from '../../bot/bot';
 import { ParsedReceipt } from '../../interfaces';
 import { sendReceiptWithActions } from '../../utils';
 

@@ -12,5 +12,6 @@ export const CallbackAction = {
   PREV_PAGE: 'prev:',
   NEXT_PAGE: 'next:',
   CANCEL: 'cancel',
-  BACK: 'back'
+  BACK: 'back',
+  BACK_TO: 'back_to'
 };

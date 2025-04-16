@@ -11,3 +11,4 @@ export * from './split-evently';
 export * from './pages';
 export * from './back';
 export * from './change-total';
+export * from './back-to';
