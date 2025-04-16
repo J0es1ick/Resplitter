@@ -1,6 +1,6 @@
 export * from './add-dish';
 export * from './cancel';
-export * from './edit-items';
+export * from './edit-item-by-id';
 export * from './edit-receipt';
 export * from './parse-correct';
 export * from './parse-incorrect';
@@ -10,3 +10,4 @@ export * from './select-dishes';
 export * from './split-evently';
 export * from './pages';
 export * from './back';
+export * from './change-total';

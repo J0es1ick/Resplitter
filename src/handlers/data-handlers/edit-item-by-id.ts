@@ -1,7 +1,7 @@
 import { bot } from '../../bot/bot';
 import { ChatState } from '../../interfaces';
 
-export const editItems = async (state: ChatState, chatId: number, data: string) => {
+export const editItemById = async (state: ChatState, chatId: number, data: string) => {
   if (!state.receipt) return;
   const indexStr = data.replace('edit_item_', '');
   const index = parseInt(indexStr, 10);

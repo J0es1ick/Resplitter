@@ -1,10 +1,12 @@
 import { bot } from '../bot/bot';
+import { CallbackAction } from '../constants/callback-actions';
 import { getChatState } from '../services/state-service';
 import {
   addDish,
   back,
+  changeTotal,
   cancel,
-  editItems,
+  editItemById,
   editReceipt,
   pagination,
   parseCorrect,
@@ -14,24 +16,6 @@ import {
   selectDishes,
   splitEvently
 } from './data-handlers';
-import { changeTotal } from './data-handlers/change-total';
-
-const CallbackAction = {
-  CHANGE_TOTAL: 'change_total',
-  PARSE_CORRECT: 'parse_correct',
-  PARSE_INCORRECT: 'parse_incorrect',
-  EDIT_RECEIPT: 'edit_receipt',
-  ADD_DISH: 'add_dish',
-  REMOVE_DISH: 'remove_dish',
-  SPLIT_EVENLY: 'split_evenly',
-  SELECT_DISHES: 'select_dishes',
-  EDIT_ITEM: 'edit_item_',
-  REMOVE_ITEM: 'remove_item_',
-  PREV_PAGE: 'prev:',
-  NEXT_PAGE: 'next:',
-  CANCEL: 'cancel',
-  BACK: 'back'
-} as const;
 
 export function setupCallbackHandler() {
   bot.on('callback_query', async (qb) => {
@@ -55,35 +39,76 @@ export function setupCallbackHandler() {
         return;
       }
 
-      if (callbackData.startsWith(CallbackAction.PREV_PAGE) || callbackData.startsWith(CallbackAction.NEXT_PAGE)) {
-        await pagination(callbackData, options.chatId, options.messageId);
-      } else if (callbackData === CallbackAction.CHANGE_TOTAL) {
-        await changeTotal(state, options.chatId);
-      } else if (callbackData === CallbackAction.PARSE_CORRECT) {
-        await parseCorrect(options.chatId);
-      } else if (callbackData === CallbackAction.PARSE_INCORRECT) {
-        await parseIncorrect(options.chatId, options.messageId, state.receipt);
-      } else if (callbackData === CallbackAction.EDIT_RECEIPT) {
-        await editReceipt(state, options.chatId, options.messageId);
-      } else if (callbackData === CallbackAction.ADD_DISH) {
-        await addDish(state, options.chatId);
-      } else if (callbackData === CallbackAction.REMOVE_DISH) {
-        await removeDish(state, options.chatId, options.messageId);
-      } else if (callbackData === CallbackAction.SPLIT_EVENLY) {
-        await splitEvently(state, options.chatId, options.messageId);
-      } else if (callbackData === CallbackAction.SELECT_DISHES) {
-        await selectDishes(options.chatId, options.messageId);
+      let actionType: string;
+      if (callbackData.startsWith(CallbackAction.PREV_PAGE)) {
+        actionType = 'PAGINATION_PREV';
+      } else if (callbackData.startsWith(CallbackAction.NEXT_PAGE)) {
+        actionType = 'PAGINATION_NEXT';
       } else if (callbackData.startsWith(CallbackAction.EDIT_ITEM)) {
-        await editItems(state, options.chatId, callbackData);
+        actionType = 'EDIT_ITEM';
       } else if (callbackData.startsWith(CallbackAction.REMOVE_ITEM)) {
-        await removeItemById(state, options.chatId, options.messageId, callbackData);
-      } else if (callbackData === CallbackAction.CANCEL) {
-        await cancel(state, options.chatId, options.messageId);
-      } else if (callbackData === CallbackAction.BACK) {
-        await back(options.chatId, options.messageId, state.receipt);
+        actionType = 'REMOVE_ITEM';
       } else {
-        console.error('Неизвестный запрос:', { data: callbackData });
-        await bot.sendMessage(options.chatId, 'Неизвестная команда');
+        actionType = callbackData;
+      }
+
+      switch (actionType) {
+        case 'PAGINATION_PREV':
+        case 'PAGINATION_NEXT':
+          await pagination(callbackData, options.chatId, options.messageId);
+          break;
+
+        case CallbackAction.CHANGE_TOTAL:
+          await changeTotal(state, options.chatId);
+          break;
+
+        case CallbackAction.PARSE_CORRECT:
+          await parseCorrect(options.chatId);
+          break;
+
+        case CallbackAction.PARSE_INCORRECT:
+          await parseIncorrect(options.chatId, options.messageId, state.receipt);
+          break;
+
+        case CallbackAction.EDIT_RECEIPT:
+          await editReceipt(state, options.chatId, options.messageId);
+          break;
+
+        case CallbackAction.ADD_DISH:
+          await addDish(state, options.chatId);
+          break;
+
+        case CallbackAction.REMOVE_DISH:
+          await removeDish(state, options.chatId, options.messageId);
+          break;
+
+        case CallbackAction.SPLIT_EVENLY:
+          await splitEvently(state, options.chatId, options.messageId);
+          break;
+
+        case CallbackAction.SELECT_DISHES:
+          await selectDishes(options.chatId, options.messageId);
+          break;
+
+        case 'EDIT_ITEM':
+          await editItemById(state, options.chatId, callbackData);
+          break;
+
+        case 'REMOVE_ITEM':
+          await removeItemById(state, options.chatId, options.messageId, callbackData);
+          break;
+
+        case CallbackAction.CANCEL:
+          await cancel(state, options.chatId, options.messageId);
+          break;
+
+        case CallbackAction.BACK:
+          await back(options.chatId, options.messageId, state.receipt);
+          break;
+
+        default:
+          console.error('Неизвестный запрос:', { data: callbackData });
+          await bot.sendMessage(options.chatId, 'Неизвестная команда');
       }
     } catch (error) {
       console.error('Ошибка обработки запросов:', error);
