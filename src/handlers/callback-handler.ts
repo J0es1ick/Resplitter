@@ -1,8 +1,8 @@
 import { bot } from '../bot/bot';
-import { getChatState, updateChatState } from '../services/state-service';
-import { getUser } from '../utils';
+import { getChatState } from '../services/state-service';
 import {
   addDish,
+  back,
   cancel,
   editItems,
   editReceipt,
@@ -27,7 +27,8 @@ const CallbackAction = {
   REMOVE_ITEM: 'remove_item_',
   PREV_PAGE: 'prev:',
   NEXT_PAGE: 'next:',
-  CANCEL: 'cancel'
+  CANCEL: 'cancel',
+  BACK: 'back'
 } as const;
 
 export function setupCallbackHandler() {
@@ -57,13 +58,13 @@ export function setupCallbackHandler() {
       } else if (callbackData === CallbackAction.PARSE_CORRECT) {
         await parseCorrect(options.chatId, options.messageId);
       } else if (callbackData === CallbackAction.PARSE_INCORRECT) {
-        await parseIncorrect(options.chatId, options.messageId);
+        await parseIncorrect(options.chatId, options.messageId, state.receipt);
       } else if (callbackData === CallbackAction.EDIT_RECEIPT) {
-        await editReceipt(state, options.chatId);
+        await editReceipt(state, options.chatId, options.messageId);
       } else if (callbackData === CallbackAction.ADD_DISH) {
         await addDish(state, options.chatId);
       } else if (callbackData === CallbackAction.REMOVE_DISH) {
-        await removeDish(state, options.chatId);
+        await removeDish(state, options.chatId, options.messageId);
       } else if (callbackData === CallbackAction.SPLIT_EVENLY) {
         await splitEvently(state, options.chatId, options.messageId);
       } else if (callbackData === CallbackAction.SELECT_DISHES) {
@@ -74,6 +75,8 @@ export function setupCallbackHandler() {
         await removeItemById(state, options.chatId, options.messageId, callbackData);
       } else if (callbackData === CallbackAction.CANCEL) {
         await cancel(state, options.chatId, options.messageId);
+      } else if (callbackData === CallbackAction.BACK) {
+        await back(options.chatId, options.messageId, state.receipt);
       } else {
         console.error('Неизвестный запрос:', { data: callbackData });
         await bot.sendMessage(options.chatId, 'Неизвестная команда');

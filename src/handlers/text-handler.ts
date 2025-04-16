@@ -1,6 +1,6 @@
 import { start, info } from './message-handlers/index';
 import { bot } from '../bot/bot';
-import { getUser, sendReceiptWithActions } from '../utils';
+import { sendReceiptWithActions } from '../utils';
 import { getChatState } from '../services/state-service';
 
 export function setupTextHandler() {

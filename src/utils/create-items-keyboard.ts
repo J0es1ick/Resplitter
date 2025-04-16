@@ -46,7 +46,7 @@ export const createItemsKeyboard = (items: ReceiptItem[], actionPrefix: string, 
   const allButtons = [
     ...itemButtons,
     ...(paginationButtons.length > 0 ? [paginationButtons] : []),
-    [{ text: 'Отмена', callback_data: 'cancel' }]
+    [{ text: 'Отмена', callback_data: 'back' }]
   ];
 
   return {

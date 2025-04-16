@@ -9,3 +9,4 @@ export * from './remove-item-by-id';
 export * from './select-dishes';
 export * from './split-evently';
 export * from './pages';
+export * from './back';
