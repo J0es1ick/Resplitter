@@ -11,12 +11,13 @@ export const createItemsKeyboard = (items: ReceiptItem[], actionPrefix: string, 
   }
 
   const totalItems = items.length;
-  const totalPages = totalItems > 0 ? Math.ceil(totalItems / itemsPerPage) : 1;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   page = Math.max(0, Math.min(page, totalPages - 1));
 
   const startIdx = page * itemsPerPage;
-  const pageItems = items.slice(startIdx, startIdx + itemsPerPage);
+  const endIdx = Math.min((page + 1) * itemsPerPage, totalItems);
+  const pageItems = items.slice(startIdx, endIdx);
 
   const itemButtons = pageItems.map((item, idx) => [
     {

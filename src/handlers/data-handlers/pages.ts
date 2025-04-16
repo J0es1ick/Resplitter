@@ -10,18 +10,28 @@ export const pagination = async (data: string, chatId: number, messageId: number
     throw new Error('No receipt items found');
   }
 
+  const parts = data.split(':');
+  const action = parts[0];
+
+  let actionPrefix = '';
+  if (parts[1].startsWith('remove_item')) {
+    actionPrefix = 'remove_item';
+  } else if (parts[1].startsWith('edit_item')) {
+    actionPrefix = 'edit_item';
+  }
+
+  const currentPage = parseInt(parts[1].split('_')[2]) || 0;
+
   let newPage;
-  if (data.startsWith('next:')) {
-    const currentPage = parseInt(data.split('_')[2]) || 0;
+  if (action === 'next') {
     newPage = currentPage + 1;
-  } else if (data.startsWith('prev:')) {
-    const currentPage = parseInt(data.split('_')[2]) || 0;
+  } else if (action === 'prev') {
     newPage = Math.max(0, currentPage - 1);
+  } else {
+    return;
   }
 
   if (newPage === undefined) return;
-
-  const actionPrefix = data.split(':')[1];
 
   await bot.editMessageReplyMarkup(createItemsKeyboard(state.receipt.items, actionPrefix, newPage), {
     chat_id: chatId,
