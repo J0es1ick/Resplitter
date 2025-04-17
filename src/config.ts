@@ -1,9 +1,20 @@
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-export const API_UPLOAD_ENDPOINT = process.env.API_UPLOAD_ENDPOINT;
-export const API_RESULT_ENDPOINT = process.env.API_RESULT_ENDPOINT;
-export const API_KEY = process.env.API_KEY;
-export const API_FOLDER_KEY= process.env.API_FOLDER_KEY;
-export const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+export const config = {
+  telegram: {
+    token: process.env.TELEGRAM_TOKEN as string,
+    webAppUrl: process.env.WEB_APP_URL || ''
+  },
+  receiptProcessor: {
+    api: process.env.RECEIPT_PROCESSOR_API as string,
+    uploadEndpoint: `${process.env.RECEIPT_PROCESSOR_API}/upload`,
+    resultEndpoint: `${process.env.RECEIPT_PROCESSOR_API}/result`
+  },
+  server: {
+    port: parseInt(process.env.PORT || '3000', 10),
+    isProduction: process.env.NODE_ENV === 'production'
+  }
+} as const;
