@@ -79,22 +79,22 @@ npm run start # команда для запуска приложения
 </details>
 
 ## 🔎 Логическая схемы работы приложения
-Ниже представления достаточно подробная схема работы приложения с точки зрения логики
+Ниже представлена достаточно подробная схема работы приложения с точки зрения логики
 <details>
     <summary>🧩 Основная логика приложения</summary>
     <img src="https://github.com/user-attachments/assets/d523cf4e-fc3e-4d8b-b159-5e391ebb3008" alt="Image 1">
-      <details>
-        <summary>❌ Функция удаления позиции</summary>
-        <img src="https://github.com/user-attachments/assets/e986663e-b32d-4c06-8fd0-576793c3e93f" alt="Image 2">
-      </details>
-      <details>
-        <summary>✅ Функция добавления</summary>
-        <img src="https://github.com/user-attachments/assets/a6cfe9f6-2fd6-421b-a1ae-5bd93b0c5823" alt="Image 3">
-      </details>
-      <details>
-        <summary>✏️ Функция изменения позиции</summary>
-        <img src="https://github.com/user-attachments/assets/7adedc90-057f-46c9-bd10-1c9e83a9510f" alt="Image 4">
-      </details>
+</details>
+<details>
+    <summary>❌ Функция удаления позиции</summary>
+    <img src="https://github.com/user-attachments/assets/e986663e-b32d-4c06-8fd0-576793c3e93f" alt="Image 2">
+</details>
+<details>
+    <summary>✅ Функция добавления</summary>
+    <img src="https://github.com/user-attachments/assets/a6cfe9f6-2fd6-421b-a1ae-5bd93b0c5823" alt="Image 3">
+</details>
+<details>
+    <summary>✏️ Функция изменения позиции</summary>
+    <img src="https://github.com/user-attachments/assets/7adedc90-057f-46c9-bd10-1c9e83a9510f" alt="Image 4">
 </details>
 
 ## Технологический стек
