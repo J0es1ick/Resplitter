@@ -1,13 +1,14 @@
 import fs from 'fs';
-import FormData from 'form-data';
 import https from 'https';
 import path from 'path';
-import axios from 'axios';
+
 import { parseReceiptText } from '../utils/receipt-parser';
 import { bot } from '../bot/bot';
 import { createWorker } from 'tesseract.js';
 import { Message } from 'node-telegram-bot-api';
 import { config } from '../config';
+import { sendToReceiptProcessor } from '../utils';
+import { ParsedReceipt } from '../interfaces';
 
 export async function processReceiptPhoto(msg: Message) {
   if (!msg.photo || msg.photo.length === 0) {
@@ -26,21 +27,25 @@ export async function processReceiptPhoto(msg: Message) {
   await downloadFile(fileUrl, downloadPath);
 
   try {
+    let recognizedReceipt: ParsedReceipt | null = null;
     try {
-      const externalResult = await processWithExternalService(downloadPath);
-      return parseReceiptText(externalResult);
-    } catch (externalError) {
-      console.error('Ошибка процессора чеков:', externalError);
-      const worker = await createWorker('rus');
-      try {
-        const {
-          data: { text }
-        } = await worker.recognize(downloadPath);
-        return parseReceiptText(text);
-      } finally {
-        await worker.terminate();
-      }
+      recognizedReceipt = await sendToReceiptProcessor(
+        downloadPath,
+        config.receiptProcessor.api,
+        config.receiptProcessor.apiKey,
+        config.receiptProcessor.folderId
+      );
+    } catch (error) {
+      console.error('Ошибка основного сервиса обработки:', error);
     }
+
+    if (!recognizedReceipt) {
+      console.log('Основной сервис не вернул результатов, пробуем Tesseract...');
+      const recognizedText = await processWithTesseract(downloadPath);
+      recognizedReceipt = parseReceiptText(recognizedText);
+    }
+
+    return recognizedReceipt;
   } finally {
     cleanupFile(downloadPath);
   }
@@ -58,31 +63,22 @@ async function downloadFile(url: string, savePath: string): Promise<void> {
   });
 }
 
-async function processWithExternalService(imagePath: string): Promise<string> {
-  const formData = new FormData();
-  formData.append('image', fs.createReadStream(imagePath));
-
-  const response = await axios.post(config.receiptProcessor.uploadEndpoint, formData, {
-    headers: {
-      ...formData.getHeaders(),
-      Accept: 'application/json'
-    },
-    timeout: 10000
-  });
-
-  if (!response.data?.text) {
-    throw new Error('No text received from external service');
+async function processWithTesseract(imagePath: string): Promise<string> {
+  const worker = await createWorker('rus');
+  try {
+    const {
+      data: { text }
+    } = await worker.recognize(imagePath);
+    return text;
+  } finally {
+    await worker.terminate();
   }
-
-  return response.data.text;
 }
 
 function cleanupFile(filePath: string): void {
   try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (unlinkError) {
-    console.error('Ошибка при удалении файла:', unlinkError);
+    fs.existsSync(filePath) && fs.unlinkSync(filePath);
+  } catch (error) {
+    console.error('File cleanup error:', error);
   }
 }

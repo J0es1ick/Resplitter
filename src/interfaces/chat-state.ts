@@ -4,4 +4,5 @@ export interface ChatState {
   receipt?: ParsedReceipt;
   editingItemIndex?: number;
   waitingFor?: 'peopleCount' | 'newItem' | 'editItem' | 'removeItem' | 'changeTotal';
+  selectedItems?: string[];
 }

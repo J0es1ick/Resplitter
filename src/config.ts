@@ -11,7 +11,9 @@ export const config = {
   receiptProcessor: {
     api: process.env.RECEIPT_PROCESSOR_API as string,
     uploadEndpoint: `${process.env.RECEIPT_PROCESSOR_API}/upload`,
-    resultEndpoint: `${process.env.RECEIPT_PROCESSOR_API}/result`
+    resultEndpoint: `${process.env.RECEIPT_PROCESSOR_API}/result`,
+    apiKey: process.env.API_KEY as string,
+    folderId: process.env.API_FOLDER_KEY as string
   },
   server: {
     port: parseInt(process.env.PORT || '3000', 10),

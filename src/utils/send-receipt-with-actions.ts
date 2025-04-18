@@ -22,9 +22,13 @@ export const sendReceiptWithActions = async (chatId: number, receipt: ParsedRece
     await bot.editMessageText(text, {
       chat_id: chatId,
       message_id: messageId,
-      reply_markup: keyboard
+      reply_markup: keyboard,
+      parse_mode: 'Markdown'
     });
   } else {
-    await bot.sendMessage(chatId, text, { reply_markup: keyboard });
+    await bot.sendMessage(chatId, text, {
+      reply_markup: keyboard,
+      parse_mode: 'Markdown'
+    });
   }
 };
