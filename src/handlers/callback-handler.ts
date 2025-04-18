@@ -88,7 +88,7 @@ export function setupCallbackHandler() {
           break;
 
         case CallbackAction.SELECT_DISHES:
-          await selectDishes(options.chatId, options.messageId);
+          await selectDishes(options.chatId, options.messageId, state);
           break;
 
         case 'EDIT_ITEM':
