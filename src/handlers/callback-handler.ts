@@ -86,7 +86,7 @@ export function setupCallbackHandler() {
           break;
 
         case CallbackAction.SPLIT_EVENLY:
-          await splitEvently(state, options.chatId, options.messageId);
+          await splitEvently(state, options.chatId);
           break;
 
         case CallbackAction.SELECT_DISHES:
