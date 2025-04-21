@@ -28,8 +28,10 @@ export function setupCallbackHandler() {
     const options = {
       chatId: qb.message.chat.id!,
       tgId: qb.message.from?.id!,
+      username: qb.message.from?.username!,
       messageId: qb.message.message_id!
     };
+    const botUsername = (await bot.getMe()).username!;
 
     try {
       const state = getChatState(options.chatId);
@@ -88,7 +90,7 @@ export function setupCallbackHandler() {
           break;
 
         case CallbackAction.SELECT_DISHES:
-          await selectDishes(options.chatId, options.messageId, state);
+          await selectDishes(options.chatId, options.messageId, state.receipt, botUsername);
           break;
 
         case 'EDIT_ITEM':

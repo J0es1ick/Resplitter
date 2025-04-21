@@ -1,4 +1,4 @@
-import { start, info } from './chat-handlers/index';
+import { info } from './chat-handlers/index';
 import { bot } from '../bot/bot';
 import { getChatState } from '../services/state-service';
 import { addItem, changeTotal, editItem, peopleCount } from './chat-state-handlers';
@@ -32,9 +32,6 @@ export function setupTextHandler() {
     }
 
     switch (text) {
-      case '/start':
-        start(options.chatId);
-        break;
       case '/info':
         info(options.chatId);
         break;
