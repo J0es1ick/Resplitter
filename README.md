@@ -54,7 +54,7 @@ API_FOLDER_KEY =
 ```
 TELEGRAM_TOKEN - токен Telegram бота для работы
 
-WEB_APP_URL - https://fuzicstgbot2.netlify.app/ - ссылка для взаимодействия с вебаппом
+WEB_APP_URL - https://fuzicstgbot2.netlify.app/ - ссылка для взаимодействия с вебаппом (репозиторий: https://github.com/Fuziks/WebAppResplitter)
 
 RECEIPT_PROCESSOR_API - https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText - входная точка OCR
 
