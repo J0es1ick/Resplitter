@@ -1,125 +1,29 @@
 import { bot } from '../bot/bot';
-import { CallbackAction } from '../constants/callback-actions';
-import { getChatState } from '../services/state-service';
-import {
-  addDish,
-  back,
-  changeTotal,
-  cancel,
-  editItemById,
-  editReceipt,
-  pagination,
-  parseCorrect,
-  parseIncorrect,
-  removeDish,
-  removeItemById,
-  selectDishes,
-  splitEvently,
-  backTo
-} from './data-handlers';
+import { stateService } from '../services/state-service';
+import { sendMiniApp } from '../utils/mini-app';
+import { sendReceiptWithActions } from '../utils/send-receipt-with-actions';
+import { createReceiptReviewHandlers } from './receipt-review';
+import { createNavigationHandlers } from './navigation';
+import { handleStart, receiptCatalog } from './start-handlers';
+import { config } from '../config';
+import { screens } from '../bot/screens';
 
-export function setupCallbackHandler() {
-  bot.on('callback_query', async (qb) => {
-    if (!qb.message || !qb.data) {
-      console.error('Неизвестный запрос:', { callback: qb });
-      return;
-    }
-
-    const options = {
-      chatId: qb.message.chat.id!,
-      tgId: qb.message.from?.id!,
-      username: qb.message.from?.username!,
-      messageId: qb.message.message_id!
-    };
-    const botUsername = (await bot.getMe()).username!;
-
-    try {
-      const state = getChatState(options.chatId);
-      const callbackData = qb.data;
-
-      if (!state.receipt) {
-        await bot.sendMessage(options.chatId, 'Чек не найден. Пожалуйста, начните заново.');
-        return;
-      }
-
-      let actionType: string;
-      if (callbackData.startsWith(CallbackAction.PREV_PAGE)) {
-        actionType = 'PAGINATION_PREV';
-      } else if (callbackData.startsWith(CallbackAction.NEXT_PAGE)) {
-        actionType = 'PAGINATION_NEXT';
-      } else if (callbackData.startsWith(CallbackAction.EDIT_ITEM)) {
-        actionType = 'EDIT_ITEM';
-      } else if (callbackData.startsWith(CallbackAction.REMOVE_ITEM)) {
-        actionType = 'REMOVE_ITEM';
-      } else {
-        actionType = callbackData;
-      }
-
-      switch (actionType) {
-        case 'PAGINATION_PREV':
-        case 'PAGINATION_NEXT':
-          await pagination(callbackData, options.chatId, options.messageId);
-          break;
-
-        case CallbackAction.CHANGE_TOTAL:
-          await changeTotal(state, options.chatId);
-          break;
-
-        case CallbackAction.PARSE_CORRECT:
-          await parseCorrect(options.chatId);
-          break;
-
-        case CallbackAction.PARSE_INCORRECT:
-          await parseIncorrect(options.chatId, options.messageId, state.receipt);
-          break;
-
-        case CallbackAction.EDIT_RECEIPT:
-          await editReceipt(state, options.chatId, options.messageId);
-          break;
-
-        case CallbackAction.ADD_DISH:
-          await addDish(state, options.chatId);
-          break;
-
-        case CallbackAction.REMOVE_DISH:
-          await removeDish(state, options.chatId, options.messageId);
-          break;
-
-        case CallbackAction.SPLIT_EVENLY:
-          await splitEvently(state, options.chatId);
-          break;
-
-        case CallbackAction.SELECT_DISHES:
-          await selectDishes(options.chatId, options.messageId, state.receipt, botUsername);
-          break;
-
-        case 'EDIT_ITEM':
-          await editItemById(state, options.chatId, callbackData);
-          break;
-
-        case 'REMOVE_ITEM':
-          await removeItemById(state, options.chatId, options.messageId, callbackData);
-          break;
-
-        case CallbackAction.CANCEL:
-          await cancel(state, options.chatId, options.messageId);
-          break;
-
-        case CallbackAction.BACK:
-          await back(options.chatId, options.messageId, state.receipt);
-          break;
-
-        case CallbackAction.BACK_TO:
-          await backTo(options.chatId, options.messageId, state.receipt);
-          break;
-
-        default:
-          console.error('Неизвестный запрос:', { data: callbackData });
-          await bot.sendMessage(options.chatId, 'Неизвестная команда');
-      }
-    } catch (error) {
-      console.error('Ошибка обработки запросов:', error);
-      await bot.sendMessage(options.chatId, 'Произошла ошибка при обработке запроса');
-    }
-  });
-}
+export const receiptReview = createReceiptReviewHandlers({
+  bot,
+  store: stateService,
+  screen: screens,
+  show: sendReceiptWithActions,
+  open: (chatId, session) => sendMiniApp(chatId, session, 'Чек подтверждён. Теперь выберите блюда и пригласите друзей в Mini App.')
+});
+export const navigation = createNavigationHandlers({
+  bot,
+  store: stateService,
+  home: handleStart,
+  retentionHours: config.storage.sessionTtlMs / 3600000,
+  screen: screens,
+  receiptsBack: receiptCatalog.back,
+  currentReceipt: receiptCatalog.resume
+});
+export const handleCallback = async (query: Parameters<typeof receiptReview.callback>[0]) => {
+  if (!(await receiptCatalog.callback(query)) && !(await navigation.callback(query))) await receiptReview.callback(query);
+};

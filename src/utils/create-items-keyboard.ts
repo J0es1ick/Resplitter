@@ -1,55 +1,35 @@
-import { ReceiptItem } from '../interfaces';
+import type { InlineKeyboardMarkup } from 'node-telegram-bot-api';
 
-export const createItemsKeyboard = (items: ReceiptItem[], actionPrefix: string, page: number = 0) => {
-  if (!items || !Array.isArray(items)) {
-    throw new Error('Invalid items array');
-  }
+import type { ReceiptSession } from '../interfaces';
+import { encodeCallback } from './callback-data';
 
-  const itemsPerPage = 8;
-  if (itemsPerPage <= 0) {
-    throw new Error('Items per page must be positive');
-  }
+export type ItemsKeyboardMode = 'edit' | 'remove' | 'select';
 
-  const totalItems = items.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-
-  page = Math.max(0, Math.min(page, totalPages - 1));
-
-  const startIdx = page * itemsPerPage;
-  const endIdx = Math.min((page + 1) * itemsPerPage, totalItems);
-  const pageItems = items.slice(startIdx, endIdx);
-
-  const itemButtons = pageItems.map((item, idx) => [
+export const createItemsKeyboard = (
+  session: ReceiptSession,
+  mode: ItemsKeyboardMode,
+  page = 0,
+  selectedItemIds: string[] = []
+): InlineKeyboardMarkup => {
+  const perPage = 8;
+  const totalPages = Math.max(1, Math.ceil(session.receipt.items.length / perPage));
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+  const start = safePage * perPage;
+  const items = session.receipt.items.slice(start, start + perPage);
+  const action = mode === 'edit' ? 'editItem' : mode === 'remove' ? 'removeItem' : 'toggle';
+  const rows = items.map((item, index) => [
     {
-      text: `${startIdx + idx + 1}. ${item.name}`,
-      callback_data: `${actionPrefix}_${startIdx + idx}`
+      text: `${selectedItemIds.includes(item.id) ? '✅ ' : ''}${start + index + 1}. ${item.name}`.slice(0, 60),
+      callback_data: encodeCallback(session.id, action, item.id)
     }
   ]);
 
-  const paginationButtons = [];
-  if (totalPages > 1) {
-    if (page > 0) {
-      paginationButtons.push({
-        text: '◀ Назад',
-        callback_data: `prev:${actionPrefix}_page_${page - 1}`
-      });
-    }
-
-    if (page < totalPages - 1) {
-      paginationButtons.push({
-        text: 'Вперед ▶',
-        callback_data: `next:${actionPrefix}_page_${page + 1}`
-      });
-    }
-  }
-
-  const allButtons = [
-    ...itemButtons,
-    ...(paginationButtons.length > 0 ? [paginationButtons] : []),
-    [{ text: 'Отмена', callback_data: 'back_to' }]
-  ];
-
-  return {
-    inline_keyboard: allButtons
-  };
+  const pagination = [];
+  if (safePage > 0) pagination.push({ text: '◀', callback_data: encodeCallback(session.id, 'page', `${mode},${safePage - 1}`) });
+  if (safePage < totalPages - 1)
+    pagination.push({ text: '▶', callback_data: encodeCallback(session.id, 'page', `${mode},${safePage + 1}`) });
+  if (pagination.length) rows.push(pagination);
+  if (mode === 'select') rows.push([{ text: 'Готово', callback_data: encodeCallback(session.id, 'selectionDone') }]);
+  rows.push([{ text: mode === 'select' ? 'Отмена' : 'Назад', callback_data: encodeCallback(session.id, 'back') }]);
+  return { inline_keyboard: rows };
 };
