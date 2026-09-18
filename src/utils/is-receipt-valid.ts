@@ -1,5 +1,5 @@
-import { ParsedReceipt } from '../interfaces';
+import type { ParsedReceipt } from '../interfaces';
+import { receiptSchema } from '../domain/schema';
 
-export const isReceiptValid = (receipt: ParsedReceipt): boolean => {
-  return (receipt.items?.length ?? 0) > 0 || (receipt.total ?? 0) > 0 || !!receipt.receiptNumber || !!receipt.date;
-};
+export const isReceiptValid = (receipt: ParsedReceipt): boolean =>
+  receipt.items.length > 0 && receipt.totalMinor > 0 && receipt.confidence >= 0.45 && receiptSchema.safeParse(receipt).success;

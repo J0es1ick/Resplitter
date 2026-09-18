@@ -1,6 +1,7 @@
 export interface OCRResponse {
   result?: {
     textAnnotation?: {
+      fullText?: string;
       blocks?: Array<{
         boundingBox?: {
           vertices?: Array<{ x: string; y: string }>;
@@ -12,6 +13,7 @@ export interface OCRResponse {
           text?: string;
           words?: Array<{
             text?: string;
+            boundingBox?: { vertices?: Array<{ x: string; y: string }> };
           }>;
         }>;
       }>;

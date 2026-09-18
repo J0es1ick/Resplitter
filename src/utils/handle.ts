@@ -1,208 +1,109 @@
 import axios from 'axios';
-import fs from 'fs';
-import { OCRResponse, ParsedReceipt } from '../interfaces';
-import { parseReceiptText } from '.';
+import { promises as fs } from 'fs';
+import path from 'path';
 
-export async function sendToReceiptProcessor(imagePath: string, api: string, apiKey: string, folderId: string): Promise<ParsedReceipt> {
-  if (!fs.existsSync(imagePath)) {
-    throw new Error(`Файл не найден: ${imagePath}`);
-  }
+import type { OCRResponse, ParsedReceipt } from '../interfaces';
+import { logger } from './logger';
+import { parseReceiptText } from './receipt-parser';
+import { reconstructReceiptRows as extractTextFromOcrResponse } from './ocr-layout';
+import { prepareOcrRetry } from './ocr-preprocess';
+import { combineOcrCandidates, needsOcrRetry } from './ocr-candidates';
 
-  const fileContent = fs.readFileSync(imagePath);
-  const encodedImage = fileContent.toString('base64');
-
-  const requestData = {
-    mimeType: 'JPEG',
-    languageCodes: ['ru', 'en'],
-    model: 'page',
-    content: encodedImage
-  };
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-    'x-folder-id': folderId,
-    'x-data-logging-enabled': 'true'
-  };
-
-  try {
-    const response = await axios.post<OCRResponse>(api, requestData, {
-      headers,
-      timeout: 15000
-    });
-
-    const formattedText = formatReceiptText(response.data);
-    console.log(formattedText);
-    const parsedReceipt = parseReceiptText(formattedText);
-
-    return parsedReceipt;
-  } catch (error: any) {
-    let errorMessage = 'Ошибка OCR';
-
-    if (axios.isAxiosError(error)) {
-      console.error('Ошибка Axios:');
-      console.error('URL:', error.config?.url);
-      console.error('Method:', error.config?.method);
-      console.error('Headers:', error.config?.headers);
-      console.error('Status:', error.response?.status);
-      console.error('Response Data:', error.response?.data);
-
-      errorMessage += ` [${error.response?.status}] ${error.response?.data?.error?.message || error.message}`;
-    } else {
-      errorMessage += `: ${error.message}`;
-    }
-    throw error;
-  }
+export interface OcrRequestOptions {
+  api: string;
+  apiKey: string;
+  folderId: string;
+  authScheme: 'Api-Key' | 'Bearer';
+  allowProviderDataLogging: boolean;
+  timeoutMs: number;
+  maxImageBytes: number;
+  enhancedRetryEnabled?: boolean;
 }
 
-function formatReceiptText(response: OCRResponse): string {
-  if (!response.result?.textAnnotation?.blocks) {
-    return '';
-  }
+export async function recognizeReceiptImage(
+  imagePath: string,
+  options: OcrRequestOptions,
+  model: 'page' | 'table' = 'page'
+): Promise<OCRResponse> {
+  const file = await fs.stat(imagePath);
+  if (!file.isFile()) throw new Error('OCR_IMAGE_NOT_FOUND');
+  if (file.size > options.maxImageBytes) throw new Error('OCR_IMAGE_TOO_LARGE');
+  if (!options.apiKey || !options.folderId) throw new Error('OCR_NOT_CONFIGURED');
 
-  const blocks = response.result.textAnnotation.blocks;
-  const elements: Array<{ y: number; x: number; text: string }> = [];
-
-  for (const block of blocks) {
-    for (const line of block.lines || []) {
-      const y = parseInt(line.boundingBox?.vertices?.[0]?.y || '0', 10);
-      const x = parseInt(line.boundingBox?.vertices?.[0]?.x || '0', 10);
-      const text = line.text || line.words?.map((w) => w.text || '').join(' ') || '';
-
-      if (text.trim()) {
-        elements.push({ y, x, text: text.trim() });
-      }
-    }
-  }
-
-  const lineGroups = groupByYPosition(elements, 15);
-
-  let formattedText = '';
-  let isTableSection = false;
-  let pendingItem: { name: string; quantity: string; price: string } | null = null;
-
-  const sortedLines = Object.entries(lineGroups)
-    .sort(([a], [b]) => parseInt(a, 10) - parseInt(b, 10))
-    .map(([, elements]) => {
-      return elements
-        .sort((a, b) => a.x - b.x)
-        .map((el) => el.text)
-        .join(' ');
-    });
-
-  for (const line of sortedLines) {
-    if (isTableStart(line)) {
-      isTableSection = true;
-      formattedText += formatTableHeader(line) + '\n---\n';
-      continue;
-    }
-
-    if (isTableEnd(line)) {
-      isTableSection = false;
-      if (pendingItem) {
-        formattedText += formatTableRow(pendingItem) + '\n';
-        pendingItem = null;
-      }
-      formattedText += '---\n';
-      continue;
-    }
-
-    if (isTableSection) {
-      const tableRow = parseTableRow(line);
-      if (tableRow) {
-        if (pendingItem) {
-          formattedText += formatTableRow(pendingItem) + '\n';
-        }
-        pendingItem = tableRow;
-      } else if (pendingItem && isItemContinuation(line)) {
-        pendingItem.name += ' ' + line.trim();
-      }
-    } else {
-      if (pendingItem) {
-        formattedText += formatTableRow(pendingItem) + '\n';
-        pendingItem = null;
-      }
-      formattedText += line + '\n';
-    }
-  }
-
-  if (pendingItem) {
-    formattedText += formatTableRow(pendingItem) + '\n';
-  }
-
-  return formattedText.trim();
+  const content = await fs.readFile(imagePath);
+  const extension = path.extname(imagePath).toLowerCase();
+  const mimeType = extension === '.png' ? 'PNG' : extension === '.pdf' ? 'PDF' : 'JPEG';
+  return recognizeReceiptContent(content, mimeType, options, model);
 }
 
-function groupByYPosition(
-  elements: Array<{ y: number; x: number; text: string }>,
-  threshold: number
-): Record<number, Array<{ x: number; text: string }>> {
-  const groups: Record<number, Array<{ x: number; text: string }>> = {};
-
-  for (const el of elements) {
-    const existingY = Object.keys(groups).find((y) => Math.abs(parseInt(y, 10) - el.y) <= threshold);
-    const yKey = existingY ? parseInt(existingY, 10) : el.y;
-    groups[yKey] = groups[yKey] || [];
-    groups[yKey].push({ x: el.x, text: el.text });
-  }
-
-  return groups;
-}
-
-function isTableStart(line: string): boolean {
-  return (
-    /(Блюдо|Наименование|Товар|Название).*(Кол-во|Количество|Кол\.).*(Сумма|Цена|Стоимость)/i.test(line) ||
-    /ПОСТЕВОЙ СЧЕТ|ГОСТЕВОЙ СЧЁТ|ЧЕК НА ОПЛАТУ/i.test(line)
+export async function recognizeReceiptContent(
+  content: Buffer,
+  mimeType: string,
+  options: OcrRequestOptions,
+  model: 'page' | 'table' = 'page'
+): Promise<OCRResponse> {
+  if (content.length > options.maxImageBytes) throw new Error('OCR_IMAGE_TOO_LARGE');
+  if (!options.apiKey || !options.folderId) throw new Error('OCR_NOT_CONFIGURED');
+  const response = await axios.post<OCRResponse>(
+    options.api,
+    {
+      mimeType,
+      languageCodes: ['ru', 'en'],
+      model,
+      content: content.toString('base64')
+    },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `${options.authScheme} ${options.apiKey}`,
+        'x-folder-id': options.folderId,
+        'x-data-logging-enabled': String(options.allowProviderDataLogging)
+      },
+      timeout: options.timeoutMs,
+      maxRedirects: 0,
+      maxBodyLength: options.maxImageBytes * 2,
+      maxContentLength: 10 * 1024 * 1024,
+      validateStatus: (status) => status >= 200 && status < 300
+    }
   );
+
+  return response.data;
 }
 
-function isTableEnd(line: string): boolean {
-  return /(Итого|Всего|ИТОГО К ОПЛАТЕ|К ОПЛАТЕ|Total)/i.test(line);
-}
-
-function isItemContinuation(line: string): boolean {
-  return !/\d+[.,]\d{2}/.test(line) && !/^\d+$/.test(line) && !isTableEnd(line);
-}
-
-function parseTableRow(line: string): { name: string; quantity: string; price: string } | null {
-  const match1 = line.match(/^([^\d]+?)\s+(\d+[.,]\d+)\s+(\d+[.,]\d+)/);
-  const match2 = line.match(/^\d+\)\s+(.+?)\s+(\d+[.,]\d+).*=\s*(\d+[.,]\d+)/);
-  const match3 = line.match(/^(.+?)\s+(\d+)\s*x\s*(\d+[.,]\d+)\s*=\s*(\d+[.,]\d+)/);
-
-  if (match1) {
-    return {
-      name: match1[1].trim(),
-      quantity: match1[2].replace(',', '.'),
-      price: match1[3].replace(',', '.')
-    };
+export async function sendToReceiptProcessor(imagePath: string, options: OcrRequestOptions): Promise<ParsedReceipt> {
+  const response = await recognizeReceiptImage(imagePath, options);
+  const text = extractTextFromOcrResponse(response);
+  if (!text) throw new Error('OCR_EMPTY_RESPONSE');
+  const primary = parseReceiptText(text);
+  if (options.enhancedRetryEnabled !== false && needsOcrRetry(primary)) {
+    try {
+      const content = await prepareOcrRetry(imagePath, response);
+      const enhanced = await recognizeReceiptContent(content, 'JPEG', options);
+      return combineOcrCandidates(primary, parseReceiptText(extractTextFromOcrResponse(enhanced)));
+    } catch {
+      logger.warn('Optional OCR enhancement unavailable');
+    }
   }
-
-  if (match2) {
-    return {
-      name: match2[1].trim(),
-      quantity: match2[2].replace(',', '.'),
-      price: match2[3].replace(',', '.')
-    };
-  }
-
-  if (match3) {
-    return {
-      name: match3[1].trim(),
-      quantity: match3[2],
-      price: match3[4].replace(',', '.')
-    };
-  }
-
-  return null;
+  return primary;
 }
 
-function formatTableHeader(line: string): string {
-  if (line.includes('|')) {
-    return line.replace(/\s*\|\s*/g, ' | ');
-  }
-  return 'Наименование'.padEnd(40) + 'Кол-во'.padStart(8) + 'Сумма'.padStart(10);
-}
+export { reconstructReceiptRows as extractTextFromOcrResponse } from './ocr-layout';
 
-function formatTableRow(item: { name: string; quantity: string; price: string }): string {
-  return item.name.slice(0, 40).padEnd(40) + item.quantity.padStart(8) + item.price.padStart(10);
-}
+export const isTransientOcrError = (error: unknown): boolean => {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return !status || status === 408 || status === 429 || status >= 500;
+};
+
+export const logOcrError = (error: unknown, attempt: number): void => {
+  if (axios.isAxiosError(error)) {
+    logger.warn('OCR request failed', {
+      attempt,
+      status: error.response?.status,
+      code: error.code,
+      message: error.message
+    });
+    return;
+  }
+  logger.warn('OCR processing failed', { attempt, error });
+};

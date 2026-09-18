@@ -1,5 +1,8 @@
 export interface ReceiptItem {
+  id: string;
   name: string;
   quantity: number;
-  price: number;
+  unitPriceMinor: number;
+  lineTotalMinor: number;
+  confidence?: number;
 }
