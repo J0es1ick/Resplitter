@@ -1,8 +1,12 @@
-import { ParsedReceipt } from './parsed-receipt';
+export type FlowKind = 'newItem' | 'editItem' | 'changeTotal' | 'peopleCount';
 
-export interface ChatState {
-  receipt?: ParsedReceipt;
-  editingItemIndex?: number;
-  waitingFor?: 'peopleCount' | 'newItem' | 'editItem' | 'removeItem' | 'changeTotal';
-  selectedItems?: string[];
+export interface UserFlow {
+  sessionId: string;
+  waitingFor: FlowKind;
+  editingItemId?: string;
+  selectionOnly?: boolean;
+  expectedVersion?: number;
+  promptMessageId?: number;
+  promptMessageIds?: number[];
+  updatedAt: string;
 }
