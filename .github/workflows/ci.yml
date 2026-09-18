@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TELEGRAM_TOKEN: test-token
+      TELEGRAM_UPDATE_MODE: polling
+      API_KEY: test-key
+      API_FOLDER_KEY: test-folder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm run format:check
+      - run: npm audit --omit=dev --audit-level=high
+      - run: docker build -t resplitter:ci .

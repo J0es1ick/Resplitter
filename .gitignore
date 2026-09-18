@@ -1,11 +1,17 @@
 # API keys and secrets
 .env
+.env.runtime
+web/node_modules
 
 # Dependency directory
 node_modules
+dist
+coverage
+.npm-cache
 
 # Photo pass-through folder
 downloads
+data
 
 # OCR train data
 eng.traineddata

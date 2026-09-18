@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+dist
+data
+downloads
+.npm-cache
+*.traineddata
+npm-debug.log*
