@@ -13,6 +13,7 @@ import { selectionSchema, versionSchema } from '../domain/schema';
 import { calculateSettlement } from '../domain/settlement';
 import type { ReceiptSession } from '../interfaces';
 import { logger } from '../utils/logger';
+import { clientAddress } from './client-address';
 
 export interface HttpDependencies {
   store: StateService;
@@ -26,6 +27,7 @@ export interface HttpDependencies {
   ready: () => boolean;
   metrics: () => string;
   metricsToken: string;
+  trustedProxyIps?: readonly string[];
 }
 function sessionView(s: ReceiptSession, userId: number, botUsername: string) {
   return {
@@ -92,7 +94,7 @@ const statusCodes: Record<string, number> = {
 };
 export function createHttpHandler(deps: HttpDependencies) {
   const perUser = new RateLimit(120, 60000);
-  const ingress = new RateLimit(600, 60000);
+  const unauthenticated = new RateLimit(600, 60000);
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const requestId = randomBytes(8).toString('hex');
     res.setHeader('x-request-id', requestId);
@@ -132,11 +134,16 @@ export function createHttpHandler(deps: HttpDependencies) {
         return json(res, 200, { ok: true });
       }
       if (url.pathname.startsWith('/api/')) {
-        if (!ingress.allow(req.socket.remoteAddress || 'unknown')) throw new Error('RATE_LIMIT');
         const origin = req.headers.origin;
         if (origin && origin !== new URL(deps.miniAppUrl || 'http://127.0.0.1:43127').origin) throw new Error('SESSION_FORBIDDEN');
         const auth = req.headers.authorization || '';
-        const user = authenticateInitData(auth.startsWith('tma ') ? auth.slice(4) : '', deps.token);
+        let user: ReturnType<typeof authenticateInitData>;
+        try {
+          user = authenticateInitData(auth.startsWith('tma ') ? auth.slice(4) : '', deps.token);
+        } catch (error) {
+          if (!unauthenticated.allow(clientAddress(req, deps.trustedProxyIps))) throw new Error('RATE_LIMIT', { cause: error });
+          throw error;
+        }
         if (!perUser.allow(String(user.id))) throw new Error('RATE_LIMIT');
         const name = [user.first_name, user.last_name].filter(Boolean).join(' ').slice(0, 120);
         if (url.pathname === '/api/sessions' && req.method === 'GET') {

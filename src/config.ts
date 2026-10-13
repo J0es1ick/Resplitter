@@ -26,6 +26,12 @@ const boolean = (name: string, fallback: boolean): boolean => {
   throw new Error(`${name} must be true or false`);
 };
 
+const list = (name: string): string[] =>
+  (process.env[name] || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
 const environment = process.env.NODE_ENV?.trim() || 'development';
 const isProduction = environment === 'production';
 const miniAppUrl = process.env.MINI_APP_URL?.trim().replace(/\/$/, '') || '';
@@ -69,7 +75,8 @@ export const config = {
   },
   http: {
     host: process.env.HOST?.trim() || (isProduction ? '0.0.0.0' : '127.0.0.1'),
-    port: integer('PORT', 43127, 1024, 65535)
+    port: integer('PORT', 43127, 1024, 65535),
+    trustedProxyIps: list('TRUSTED_PROXY_IPS')
   },
   ocr: {
     api: process.env.RECEIPT_PROCESSOR_API?.trim() || 'https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText',

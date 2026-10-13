@@ -21,7 +21,8 @@ export async function startHttpServer() {
     webhookSecret: config.telegram.webhookSecret,
     ready: () => ready,
     metrics: () => metrics.render() + '\n' + stateService.queueMetrics(),
-    metricsToken: config.metricsToken
+    metricsToken: config.metricsToken,
+    trustedProxyIps: config.http.trustedProxyIps
   });
   const server = createServer((req, res) => {
     void handler(req, res);

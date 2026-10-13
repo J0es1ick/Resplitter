@@ -25,7 +25,8 @@ test('HTTP integration: authenticated ownership, concurrency, sharing and idempo
     webhookSecret: 'test-secret',
     ready: () => true,
     metrics: () => 'metric 1',
-    metricsToken: 'metrics-secret'
+    metricsToken: 'metrics-secret',
+    trustedProxyIps: ['127.0.0.1']
   });
   const server = createServer((req, res) => {
     void handler(req, res);
@@ -73,7 +74,7 @@ test('HTTP integration: authenticated ownership, concurrency, sharing and idempo
     assert.equal((await request(route + '/finalize', 1, { version: s.version })).status, 200);
     const notice = store.nextNotification();
     assert.ok(notice);
-    store.notificationAttempt(notice.id, true);
+    store.notificationAttempt(notice.id, { status: 'sent' });
     assert.equal(store.nextNotification(), undefined);
     assert.equal((await request(route + '/mode', 1, { version: s.version, mode: 'equal' })).status, 409);
     const group = await store.createSession(1, -100, demoReceipt());
@@ -160,6 +161,12 @@ test('HTTP integration: authenticated ownership, concurrency, sharing and idempo
       );
     assert.equal(store.nextUpdate()?.id, 77);
     assert.equal(store.nextUpdate(), undefined);
+    for (let i = 0; i < 600; i++) {
+      assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '198.51.100.10' } })).status, 401);
+    }
+    assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '198.51.100.10' } })).status, 429);
+    assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '203.0.113.11' } })).status, 401);
+    assert.equal((await request(route, 1)).status, 200);
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
     await store.close();
