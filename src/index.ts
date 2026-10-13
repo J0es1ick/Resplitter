@@ -16,6 +16,7 @@ import { logger } from './utils/logger';
 import { RateLimit } from './security/rate-limit';
 import { backKeyboard } from './utils/bot-navigation';
 import { screens } from './bot/screens';
+import { notificationOutcome } from './services/notification-delivery';
 
 let server: Server | undefined;
 let stopping = false;
@@ -82,12 +83,11 @@ async function deliver(): Promise<void> {
     }
     try {
       await bot.sendMessage(entry.chat_id, entry.body + '\n\nПросмотр чеков: /app');
-      stateService.notificationAttempt(entry.id, true);
+      stateService.notificationAttempt(entry.id, { status: 'sent' });
     } catch (error) {
-      stateService.notificationAttempt(entry.id, false);
+      stateService.notificationAttempt(entry.id, notificationOutcome(error));
       metrics.increment('resplitter_notification_errors_total');
       logger.error('Final notification delivery failed', { notificationId: entry.id, error });
-      await pause(30000);
     }
   }
 }

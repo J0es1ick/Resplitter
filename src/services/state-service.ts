@@ -10,6 +10,7 @@ import { calculateSettlement } from '../domain/settlement';
 import { quantityUnits } from '../domain/quantity';
 import { formatMoney } from '../utils/money';
 import { samePrintedReceipt, assertSafeDuplicateDraft } from '../domain/receipt-identity';
+import type { NotificationOutcome } from './notification-delivery';
 
 type Row = { body: string };
 export interface BotUiState {
@@ -34,13 +35,20 @@ export class StateService {
       CREATE INDEX IF NOT EXISTS session_expiry ON sessions(expires);
       CREATE TABLE IF NOT EXISTS flows(key TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE, expires INTEGER, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS inbox(id INTEGER PRIMARY KEY, body TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE, chat_id INTEGER NOT NULL, body TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE, chat_id INTEGER NOT NULL, body TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'pending', next_attempt INTEGER NOT NULL DEFAULT 0, last_error TEXT);
       CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS bot_ui(key TEXT PRIMARY KEY, expires INTEGER NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS session_aliases(alias_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
         target_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, CHECK(alias_id != target_id));
       PRAGMA user_version=1;
     `);
+    const outboxColumns = new Set((this.database.prepare('PRAGMA table_info(outbox)').all() as Array<{ name: string }>).map((row) => row.name));
+    if (!outboxColumns.has('state')) this.database.exec("ALTER TABLE outbox ADD COLUMN state TEXT NOT NULL DEFAULT 'pending'");
+    if (!outboxColumns.has('next_attempt')) this.database.exec('ALTER TABLE outbox ADD COLUMN next_attempt INTEGER NOT NULL DEFAULT 0');
+    if (!outboxColumns.has('last_error')) this.database.exec('ALTER TABLE outbox ADD COLUMN last_error TEXT');
+    this.database.exec('CREATE INDEX IF NOT EXISTS outbox_ready ON outbox(state,next_attempt)');
+    this.database.prepare("UPDATE outbox SET state=CASE WHEN sent=1 THEN 'sent' WHEN attempts>=10 THEN 'failed' ELSE 'pending' END WHERE state='pending'").run();
+    this.database.prepare("UPDATE outbox SET state='pending' WHERE state='processing'").run();
     this.database.prepare("UPDATE inbox SET state='pending' WHERE state='processing'").run();
     await this.cleanupExpired();
   }
@@ -364,9 +372,14 @@ export class StateService {
       state: string;
       count: number;
     }>;
-    const outbox = this.database.prepare('SELECT count(*) AS count FROM outbox WHERE sent=0').get() as { count: number };
+    const outbox = this.database.prepare("SELECT state,count(*) AS count FROM outbox GROUP BY state").all() as Array<{ state: string; count: number }>;
     return (
-      counts.map((r) => `resplitter_inbox{state="${r.state}"} ${r.count}`).join('\n') + '\nresplitter_outbox_pending ' + outbox.count + '\n'
+      counts.map((r) => `resplitter_inbox{state="${r.state}"} ${r.count}`).join('\n') +
+      '\n' +
+      outbox.map((r) => `resplitter_outbox{state="${r.state}"} ${r.count}`).join('\n') +
+      '\nresplitter_outbox_pending ' +
+      outbox.filter((r) => r.state === 'pending').reduce((total, r) => total + r.count, 0) +
+      '\n'
     );
   }
   public enqueue(update: Update): void {
@@ -396,12 +409,27 @@ export class StateService {
   public setOffset(value: number): void {
     this.database.prepare("INSERT OR REPLACE INTO meta VALUES ('offset',?)").run(String(value));
   }
-  public nextNotification(): { id: string; chat_id: number; body: string } | undefined {
-    return this.database.prepare('SELECT id,chat_id,body FROM outbox WHERE sent=0 AND attempts<10 LIMIT 1').get() as
-      { id: string; chat_id: number; body: string } | undefined;
+  public nextNotification(now = Date.now()): { id: string; chat_id: number; body: string } | undefined {
+    const entry = this.database
+      .prepare("SELECT id,chat_id,body FROM outbox WHERE state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT 1")
+      .get(now) as { id: string; chat_id: number; body: string } | undefined;
+    if (!entry) return undefined;
+    const claim = this.database.prepare("UPDATE outbox SET state='processing' WHERE id=? AND state='pending'").run(entry.id);
+    return claim.changes ? entry : undefined;
   }
-  public notificationAttempt(id: string, sent: boolean): void {
-    this.database.prepare('UPDATE outbox SET attempts=attempts+1,sent=? WHERE id=?').run(Number(sent), id);
+  public notificationAttempt(id: string, outcome: NotificationOutcome, now = Date.now()): void {
+    const entry = this.database.prepare("SELECT attempts,state FROM outbox WHERE id=?").get(id) as { attempts: number; state: string } | undefined;
+    if (!entry || entry.state !== 'processing') return;
+    const attempts = entry.attempts + 1;
+    if (outcome.status === 'sent') {
+      this.database.prepare("UPDATE outbox SET attempts=?,sent=1,state='sent',next_attempt=?,last_error=NULL WHERE id=?").run(attempts, now, id);
+      return;
+    }
+    const failed = outcome.status === 'failed' || attempts >= 10;
+    const retryAfterMs = Math.max(1000, Math.min((outcome.status === 'retry' ? outcome.retryAfterMs : undefined) || 1000 * 2 ** Math.min(attempts, 10), 3600000));
+    this.database
+      .prepare('UPDATE outbox SET attempts=?,sent=0,state=?,next_attempt=?,last_error=? WHERE id=?')
+      .run(attempts, failed ? 'failed' : 'pending', failed ? now : now + retryAfterMs, outcome.error?.slice(0, 500) || null, id);
   }
 }
 export const stateService = new StateService(config.storage.databaseFile, config.storage.sessionTtlMs);
