@@ -37,17 +37,24 @@ export class StateService {
       CREATE TABLE IF NOT EXISTS inbox(id INTEGER PRIMARY KEY, body TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY, session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE, chat_id INTEGER NOT NULL, body TEXT NOT NULL, sent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'pending', next_attempt INTEGER NOT NULL DEFAULT 0, last_error TEXT);
       CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS outbox_chat_limits(chat_id INTEGER PRIMARY KEY, next_attempt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS bot_ui(key TEXT PRIMARY KEY, expires INTEGER NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS session_aliases(alias_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
         target_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, CHECK(alias_id != target_id));
       PRAGMA user_version=1;
     `);
-    const outboxColumns = new Set((this.database.prepare('PRAGMA table_info(outbox)').all() as Array<{ name: string }>).map((row) => row.name));
+    const outboxColumns = new Set(
+      (this.database.prepare('PRAGMA table_info(outbox)').all() as Array<{ name: string }>).map((row) => row.name)
+    );
     if (!outboxColumns.has('state')) this.database.exec("ALTER TABLE outbox ADD COLUMN state TEXT NOT NULL DEFAULT 'pending'");
     if (!outboxColumns.has('next_attempt')) this.database.exec('ALTER TABLE outbox ADD COLUMN next_attempt INTEGER NOT NULL DEFAULT 0');
     if (!outboxColumns.has('last_error')) this.database.exec('ALTER TABLE outbox ADD COLUMN last_error TEXT');
     this.database.exec('CREATE INDEX IF NOT EXISTS outbox_ready ON outbox(state,next_attempt)');
-    this.database.prepare("UPDATE outbox SET state=CASE WHEN sent=1 THEN 'sent' WHEN attempts>=10 THEN 'failed' ELSE 'pending' END WHERE state='pending'").run();
+    this.database
+      .prepare(
+        "UPDATE outbox SET state=CASE WHEN sent=1 THEN 'sent' WHEN attempts>=10 THEN 'failed' ELSE 'pending' END WHERE state='pending'"
+      )
+      .run();
     this.database.prepare("UPDATE outbox SET state='pending' WHERE state='processing'").run();
     this.database.prepare("UPDATE inbox SET state='pending' WHERE state='processing'").run();
     await this.cleanupExpired();
@@ -360,6 +367,7 @@ export class StateService {
     this.database.prepare('DELETE FROM bot_ui WHERE expires<=?').run(Date.now());
     this.database.prepare('DELETE FROM flows WHERE expires<=?').run(Date.now());
     this.database.prepare('DELETE FROM inbox WHERE created<?').run(Date.now() - 86400000);
+    this.database.prepare('DELETE FROM outbox_chat_limits WHERE next_attempt<=?').run(Date.now());
     const result = this.database.prepare('DELETE FROM sessions WHERE expires<=?').run(Date.now());
     this.database
       .prepare("DELETE FROM meta WHERE (key LIKE 'photo:%' OR key LIKE 'image:%') AND value NOT IN (SELECT id FROM sessions)")
@@ -372,7 +380,10 @@ export class StateService {
       state: string;
       count: number;
     }>;
-    const outbox = this.database.prepare("SELECT state,count(*) AS count FROM outbox GROUP BY state").all() as Array<{ state: string; count: number }>;
+    const outbox = this.database.prepare('SELECT state,count(*) AS count FROM outbox GROUP BY state').all() as Array<{
+      state: string;
+      count: number;
+    }>;
     return (
       counts.map((r) => `resplitter_inbox{state="${r.state}"} ${r.count}`).join('\n') +
       '\n' +
@@ -410,26 +421,68 @@ export class StateService {
     this.database.prepare("INSERT OR REPLACE INTO meta VALUES ('offset',?)").run(String(value));
   }
   public nextNotification(now = Date.now()): { id: string; chat_id: number; body: string } | undefined {
+    const limit = this.database.prepare("SELECT value FROM meta WHERE key='outbox:next_global'").get() as { value: string } | undefined;
+    if (limit && Number(limit.value) > now) return undefined;
     const entry = this.database
-      .prepare("SELECT id,chat_id,body FROM outbox WHERE state='pending' AND next_attempt<=? ORDER BY next_attempt,id LIMIT 1")
-      .get(now) as { id: string; chat_id: number; body: string } | undefined;
+      .prepare(
+        `SELECT o.id,o.chat_id,o.body FROM outbox o LEFT JOIN outbox_chat_limits c ON c.chat_id=o.chat_id
+        WHERE o.state='pending' AND o.next_attempt<=? AND (c.next_attempt IS NULL OR c.next_attempt<=?)
+        ORDER BY o.next_attempt,o.id LIMIT 1`
+      )
+      .get(now, now) as { id: string; chat_id: number; body: string } | undefined;
     if (!entry) return undefined;
-    const claim = this.database.prepare("UPDATE outbox SET state='processing' WHERE id=? AND state='pending'").run(entry.id);
-    return claim.changes ? entry : undefined;
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      const claim = this.database.prepare("UPDATE outbox SET state='processing' WHERE id=? AND state='pending'").run(entry.id);
+      if (!claim.changes) {
+        this.database.exec('ROLLBACK');
+        return undefined;
+      }
+      this.database.prepare("INSERT OR REPLACE INTO meta(key,value) VALUES ('outbox:next_global',?)").run(String(now + 34));
+      this.database
+        .prepare('INSERT OR REPLACE INTO outbox_chat_limits(chat_id,next_attempt) VALUES (?,?)')
+        .run(entry.chat_id, now + (entry.chat_id < 0 ? 3000 : 1000));
+      this.database.exec('COMMIT');
+      return entry;
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
   }
   public notificationAttempt(id: string, outcome: NotificationOutcome, now = Date.now()): void {
-    const entry = this.database.prepare("SELECT attempts,state FROM outbox WHERE id=?").get(id) as { attempts: number; state: string } | undefined;
+    const entry = this.database.prepare('SELECT attempts,state FROM outbox WHERE id=?').get(id) as
+      { attempts: number; state: string } | undefined;
     if (!entry || entry.state !== 'processing') return;
     const attempts = entry.attempts + 1;
     if (outcome.status === 'sent') {
-      this.database.prepare("UPDATE outbox SET attempts=?,sent=1,state='sent',next_attempt=?,last_error=NULL WHERE id=?").run(attempts, now, id);
+      this.database
+        .prepare("UPDATE outbox SET attempts=?,sent=1,state='sent',next_attempt=?,last_error=NULL WHERE id=?")
+        .run(attempts, now, id);
       return;
     }
     const failed = outcome.status === 'failed' || attempts >= 10;
-    const retryAfterMs = Math.max(1000, Math.min((outcome.status === 'retry' ? outcome.retryAfterMs : undefined) || 1000 * 2 ** Math.min(attempts, 10), 3600000));
-    this.database
-      .prepare('UPDATE outbox SET attempts=?,sent=0,state=?,next_attempt=?,last_error=? WHERE id=?')
-      .run(attempts, failed ? 'failed' : 'pending', failed ? now : now + retryAfterMs, outcome.error?.slice(0, 500) || null, id);
+    const requestedDelay = outcome.status === 'retry' ? outcome.retryAfterMs : undefined;
+    const retryAfterMs =
+      requestedDelay && Number.isFinite(requestedDelay) && requestedDelay > 0
+        ? Math.min(Math.max(1000, Math.ceil(requestedDelay)), Number.MAX_SAFE_INTEGER - now)
+        : 1000 * 2 ** Math.min(attempts, 10);
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      this.database
+        .prepare('UPDATE outbox SET attempts=?,sent=0,state=?,next_attempt=?,last_error=? WHERE id=?')
+        .run(attempts, failed ? 'failed' : 'pending', failed ? now : now + retryAfterMs, outcome.error?.slice(0, 500) || null, id);
+      if (outcome.status === 'retry' && outcome.rateLimited) {
+        const previous = this.database.prepare("SELECT value FROM meta WHERE key='outbox:next_global'").get() as
+          { value: string } | undefined;
+        this.database
+          .prepare("INSERT OR REPLACE INTO meta(key,value) VALUES ('outbox:next_global',?)")
+          .run(String(Math.max(Number(previous?.value || 0), now + retryAfterMs)));
+      }
+      this.database.exec('COMMIT');
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
   }
 }
 export const stateService = new StateService(config.storage.databaseFile, config.storage.sessionTtlMs);

@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Update } from 'node-telegram-bot-api';
-import { bot, setBotUsername } from './bot/bot';
+import { bot, outboxBot, setBotUsername } from './bot/bot';
 import { config } from './config';
 import { handleCallback } from './handlers/callback-handler';
 import { handlePhoto } from './handlers/photo-handler';
@@ -82,7 +82,7 @@ async function deliver(): Promise<void> {
       continue;
     }
     try {
-      await bot.sendMessage(entry.chat_id, entry.body + '\n\nПросмотр чеков: /app');
+      await outboxBot.sendMessage(entry.chat_id, entry.body + '\n\nПросмотр чеков: /app');
       stateService.notificationAttempt(entry.id, { status: 'sent' });
     } catch (error) {
       stateService.notificationAttempt(entry.id, notificationOutcome(error));
