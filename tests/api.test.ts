@@ -165,6 +165,11 @@ test('HTTP integration: authenticated ownership, concurrency, sharing and idempo
       assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '198.51.100.10' } })).status, 401);
     }
     assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '198.51.100.10' } })).status, 429);
+    assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '203.0.113.20, 198.51.100.10' } })).status, 429);
+    assert.equal(
+      (await fetch(base + route, { headers: { 'x-forwarded-for': '198.51.100.10', forwarded: 'for=203.0.113.21' } })).status,
+      429
+    );
     assert.equal((await fetch(base + route, { headers: { 'x-forwarded-for': '203.0.113.11' } })).status, 401);
     assert.equal((await request(route, 1)).status, 200);
   } finally {
